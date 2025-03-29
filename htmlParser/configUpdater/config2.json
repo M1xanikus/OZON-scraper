@@ -1,0 +1,77 @@
+{
+  "selectors": {
+    "title": {
+      "tag": "h1",
+      "class": "lz6_28 tsHeadline550Medium"
+    },
+    "price": {
+      "tag": "span",
+      "class": "lz_28 zl_28 lz4_28"
+    },
+    "description": {
+      "tag": "div",
+      "class": "RA-a1"
+    },
+    "characteristics": {
+      "container": {
+        "tag": "div",
+        "class": "r4k_28"
+      },
+      "key_value_pair": {
+        "tag": "dl",
+        "class": "rk8_28"
+      },
+      "key": {
+        "tag": "dt",
+        "class": "rk7_28"
+      },
+      "value": {
+        "tag": "dd",
+        "class": "r7k_28"
+      }
+    },
+    "rating": {
+      "container": {
+        "tag": "div",
+        "class": "sx7_31"
+      },
+      "value": {
+        "tag": "span"
+      }
+    },
+    "reviews": {
+      "container": {
+        "tag": "div",
+        "class": "rt1_31"
+      },
+      "review_block": {
+        "tag": "div",
+        "class": "r2t_31"
+      },
+      "reviewer": {
+        "tag": "span",
+        "class": "p8u_31"
+      },
+      "date": {
+        "tag": "div",
+        "class": "x5p_31"
+      },
+      "comment": {
+        "tag": "span",
+        "class": "p7x_31"
+      },
+      "rating": {
+        "tag": "div",
+        "class": "a5d25-a a5d25-a0"
+      },
+      "product_color": {
+        "tag": "a",
+        "class": "y3p_31"
+      },
+      "media": {
+        "tag": "img",
+        "class": "pw4_31 b933-a"
+      }
+    }
+  }
+}

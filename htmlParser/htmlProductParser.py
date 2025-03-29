@@ -1,20 +1,18 @@
 from bs4 import BeautifulSoup
+
 class HTMLProductParser:
-    def __init__(self, html_code: str):
+    def __init__(self, html_code: str, product_name: str):
         self.html = html_code
+        self.product_name = product_name
         self.soup = BeautifulSoup(html_code, "html.parser")
 
     def get_title(self) -> str:
-        title = self.soup.find("h1", class_="lz3_29 tsHeadline550Medium")
+        title = self.soup.find("h1", class_="lz6_28 tsHeadline550Medium")
         return title.text.strip() if title else "Нет заголовка"
 
     def get_price(self) -> str:
-        price = self.soup.find("span", class_="ly7_29 l7y_29 lz1_29")
+        price = self.soup.find("span", class_="lz_28 zl_28 lz4_28")
         return price.text.strip() if price else "Цена не найдена"
-
-    def get_sizes(self) -> list:
-        sizes = self.soup.select(".e310-a6 span.q6b012-a")
-        return [size.text.strip() for size in sizes] if sizes else ["Размеры не найдены"]
 
     def get_description(self) -> str:
         desc = self.soup.find("div", class_="RA-a1")
@@ -22,86 +20,97 @@ class HTMLProductParser:
 
     def get_characteristics(self) -> dict:
         characteristics = {}
-        char_blocks = self.soup.select(".kr0_29")
+        char_blocks = self.soup.select(".r4k_28")
         for block in char_blocks:
-            key_elem = block.find("dt", class_="qk9_29")
-            value_elem = block.find("dd", class_="q9k_29")
-            if key_elem and value_elem:
-                key = key_elem.text.strip()
-                value = " ".join([el.text.strip() for el in value_elem.find_all(string=True)])
-                characteristics[key] = value
+            # Ищем все пары ключ-значение внутри блока
+            key_value_pairs = block.find_all("dl",class_="rk8_28")
+
+            for pair in key_value_pairs:
+                key_elem = pair.find("dt", class_="rk7_28")
+
+                value_elem = pair.find("dd", class_="r7k_28")
+
+                if key_elem and value_elem:
+                    key = key_elem.text.strip()
+                    value = " ".join([el.text.strip() for el in value_elem.find_all(string=True)])
+                    characteristics[key] = value
         return characteristics
 
     def get_rating(self) -> dict:
-        # Основной контейнер с рейтингом
-        rating_container = self.soup.select_one('div.z2s_32')
-
+        rating_container = self.soup.select_one('div.sx7_31')
         if not rating_container:
             return {"error": "Рейтинг не найден"}
 
-        # Общий рейтинг
-        overall_rating = rating_container.select_one('div.s4z_32 span')
+        overall_rating = rating_container.find("span")
         overall_rating = overall_rating.text.strip() if overall_rating else "Нет данных"
-
-        # Детализация по звездам
-        star_ratings = {}
-        star_blocks = rating_container.select('div.z4s_32')
-
-        for block in star_blocks:
-            stars = block.select_one('.z5s_32').text.strip()
-            count = block.select_one('.sz6_32').text.strip()
-            star_ratings[stars] = count
 
         return {
             "overall_rating": overall_rating,
-            "star_ratings": star_ratings
         }
 
-    def get_reviews(self):
+    def get_reviews(self) -> list:
         reviews = []
-        # Ищем все блоки с отзывами; в данном HTML отзывы находятся в контейнерах с классом "py_32"
-        review_blocks = self.soup.find_all("div", class_="py_32")
 
-        for block in review_blocks:
-            review = {}
-            # Извлекаем дату отзыва из элемента с классом "x2p_32"
-            date_tag = block.find("div", class_="x2p_32")
-            review["date"] = date_tag.get_text(strip=True) if date_tag else "Нет даты"
+        # Находим все контейнеры с отзывами
+        reviews_containers = self.soup.find_all("div", class_="rt1_31")
+        for container in reviews_containers:
+            # Убираем рекомендации
+            for recommendations in container.find_all("div", class_="jp7_25"):
+                recommendations.decompose()
 
-            # Извлекаем текст отзыва из элемента с классом "p4x_32"
-            comment_tag = block.find("span", class_="p4x_32")
-            review["comment"] = comment_tag.get_text(strip=True) if comment_tag else "Нет данных"
+            # Проверяем, есть ли в контейнере отзывы после удаления рекомендаций
+            review_blocks = container.find_all("div", class_="r2t_31")
+            if not review_blocks:
+                continue  # Пропускаем пустые контейнеры
 
-            # Извлекаем имя пользователя из элемента с классом "p5u_32"
-            reviewer_tag = block.find("span", class_="p5u_32")
-            review["reviewer"] = reviewer_tag.get_text(strip=True) if reviewer_tag else "Неизвестный"
+            for block in review_blocks:
+                review = {}
 
-            # Определяем рейтинг: сначала ищем активные звёзды (цвет "rgb(255, 168, 0)" или "rgba(255, 168, 0")
-            active_stars = block.find_all("svg",
-                                          style=lambda s: s and ("rgb(255, 168, 0)" in s or "rgba(255, 168, 0" in s))
-            rating = len(active_stars)
+                # Имя пользователя
+                reviewer_tag = block.find("span", class_="p8u_31")
+                review["reviewer"] = reviewer_tag.get_text(strip=True) if reviewer_tag else "Неизвестный"
 
-            # Если активные звёзды не найдены, проверяем наличие альтернативного блока с рейтингом
-            if rating == 0:
-                alt_rating_div = block.find("div", class_="b7123-a b7123-a1 tsBodyControl300XSmall")
-                if alt_rating_div:
-                    # Если альтернативный блок найден, можно задать рейтинг 0 (либо добавить дополнительную логику для обработки этого блока)
-                    rating = 0
+                # Дата отзыва
+                date_tag = block.find("div", class_="x5p_31")
+                review["date"] = date_tag.get_text(strip=True) if date_tag else "Нет даты"
 
-            review["rating"] = rating
-            reviews.append(review)
+                # Текст отзыва
+                comment_tag = block.find("span", class_="p7x_31")
+                review["comment"] = comment_tag.get_text(strip=True) if comment_tag else "Нет данных"
+
+                # Рейтинг (количество звезд)
+                review["rating"] = self.extract_rating(block)
+
+                # Дополнительные данные (например, цвет товара)
+                product_color_tag = block.find("a", class_="y3p_31")
+                review["product_color"] = product_color_tag.get_text(strip=True) if product_color_tag else "Нет данных"
+
+                # Изображения или видео (если есть)
+                media_links = [media.get("src", "") for media in block.find_all("img", class_="pw4_31 b933-a")]
+
+                review["media"] = media_links
+
+                reviews.append(review)
 
         return reviews
+
+    def extract_rating(self, block) -> int:
+        rating_block = block.find("div", class_="a5d25-a a5d25-a0")
+        if not rating_block:
+            return 0
+
+        active_stars = rating_block.find_all("svg", style=lambda s: s and "rgb(255, 165, 0)" in s)
+        return len(active_stars)
 
     def get_product_data(self) -> dict:
         return {
             "Название": self.get_title(),
-            "Цена": self.get_price(),
-            "Размеры": self.get_sizes(),
+            "Цена": self.get_price().replace('\u2009', ' '),
             "Описание": self.get_description(),
             "Характеристики": self.get_characteristics(),
             "Оценка": self.get_rating(),
             "Отзывы": self.get_reviews(),
+            "URL товара": "https://ozon.by/product/" + self.product_name + "/"
         }
 
     def get_all_links(self) -> list:
