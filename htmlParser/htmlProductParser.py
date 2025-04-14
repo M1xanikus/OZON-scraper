@@ -9,8 +9,12 @@ class HTMLProductParser:
         self.html = html_code
         self.product_name = product_name
         self.soup = BeautifulSoup(html_code, "html.parser")
-        file_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "configUpdater"))
-        config_path = os.path.join(file_root, config_path)
+        
+        # Если путь не указан, используем путь по умолчанию
+        if config_path == 'config.json':
+            file_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "configUpdater"))
+            config_path = os.path.join(file_root, config_path)
+            
         # Загрузка конфигурации из JSON-файла
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
@@ -74,7 +78,10 @@ class HTMLProductParser:
 
                 if key_elem and value_elem:
                     key = key_elem.text.strip()
-                    value = " ".join([el.text.strip() for el in value_elem.find_all(string=True)])
+                    if hasattr(value_elem, 'text'):
+                        value = value_elem.text.strip()
+                    else:
+                        value = str(value_elem).strip()
                     characteristics[key] = value
         return characteristics
 

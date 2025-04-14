@@ -1,20 +1,40 @@
-version: '3.8'
+version: '3.11'
 
 services:
-  ozon-scraper:
+  web:
     build: .
     ports:
       - "8000:8000"
     volumes:
-      - ./htmldata:/app/htmldata
-      - ./json_data:/app/json_data
-      - ./product_links.txt:/app/product_links.txt
-      - ./used_links.txt:/app/used_links.txt
-      - ./htmlParser/configUpdater/config.json:/app/htmlParser/configUpdater/config.json
-      - ./htmlParser/configUpdater/template.html:/app/htmlParser/configUpdater/template.html
-      - ./htmldata/html_config/config_html_file.html:/app/htmldata/html_config/config_html_file.html
-      - ./run_update_config.py:/app/run_update_config.py
+      - .:/app
+      - ./data:/app/data
     environment:
+      - PYTHONPATH=/app
       - PYTHONUNBUFFERED=1
+      - IS_DOCKER_ENV=true
+      # Раскомментируйте и укажите ваш прокси, если используете:
+      # - HTTP_PROXY=http://user:password@host:port
+      # - HTTPS_PROXY=http://user:password@host:port
+    shm_size: '2gb'
+    cap_add:
+      - SYS_ADMIN
+    restart: unless-stopped
+ 
+  scraper:
+    build: .
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./chrome-user-data:/home/scraper/.config/chrome
+    shm_size: '2gb'
+    ports:
+      - "9222:9222"
+    environment:
+      - IS_DOCKER_ENV=true
+      # Раскомментируйте и укажите ваш прокси, если используете:
+      # - HTTP_PROXY=http://user:password@host:port
+      # - HTTPS_PROXY=http://user:password@host:port
+    cap_add:
+      - SYS_ADMIN
     restart: unless-stopped
  

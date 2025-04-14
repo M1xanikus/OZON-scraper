@@ -1,12 +1,8 @@
-# Byte-compiled / optimized / DLL files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -23,6 +19,26 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+logs/
+*.log
+json_data/
+product_links.txt
+used_links.txt
+htmldata/html_config/config_html_file.html
+htmlParser/configUpdater/config.json
 
 # PyInstaller
 *.manifest
@@ -48,7 +64,6 @@ coverage.xml
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 
 # Flask stuff:
@@ -76,15 +91,6 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -97,12 +103,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
-
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
 
 # Project specific
 htmldata/*

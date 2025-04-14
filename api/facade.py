@@ -28,16 +28,33 @@ class OzonScraperFacade:
                      Если не указана, используется директория проекта.
         """
         self.base_dir = base_dir or project_root
-        self.htmldata_dir = os.path.join(self.base_dir, "htmldata")
+        self.data_dir = os.path.join(self.base_dir, "data")
+        self.htmldata_dir = os.path.join(self.data_dir, "htmldata")
         self.categories_dir = os.path.join(self.htmldata_dir, "categories")
+        self.html_config_dir = os.path.join(self.htmldata_dir, "html_config")
         self.config_dir = os.path.join(self.base_dir, "htmlParser", "configUpdater")
-        self.json_dir = os.path.join(self.base_dir, "json_data")
+        self.json_dir = os.path.join(self.data_dir, "json_data")
         
         # Создаем необходимые директории
+        os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.htmldata_dir, exist_ok=True)
         os.makedirs(self.categories_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.htmldata_dir, "html_config"), exist_ok=True)
+        os.makedirs(self.html_config_dir, exist_ok=True)
         os.makedirs(self.json_dir, exist_ok=True)
+        
+        # Копируем config_html_file.html, если его нет
+        src_html_config = os.path.join(self.base_dir, "htmldata", "html_config", "config_html_file.html")
+        dst_html_config = os.path.join(self.html_config_dir, "config_html_file.html")
+        if not os.path.exists(dst_html_config) and os.path.exists(src_html_config):
+            import shutil
+            shutil.copy2(src_html_config, dst_html_config)
+        
+        # Копируем готовый конфиг, если его нет
+        src_config = os.path.join(self.config_dir, "config.json")
+        dst_config = os.path.join(self.html_config_dir, "config.json")
+        if not os.path.exists(dst_config) and os.path.exists(src_config):
+            import shutil
+            shutil.copy2(src_config, dst_config)
     
     def download_product_page(self, product_url: str) -> Dict[str, Any]:
         """
@@ -93,7 +110,9 @@ class OzonScraperFacade:
             Словарь с данными продукта.
         """
         try:
-            parser = HTMLProductParser(html, file_name.rstrip('.html'))
+            # Используем config.json из директории html_config
+            config_path = os.path.join(self.html_config_dir, "config.json")
+            parser = HTMLProductParser(html, file_name.rstrip('.html'), config_path)
             product_data = parser.get_product_data()
             
             return {
@@ -143,6 +162,72 @@ class OzonScraperFacade:
                 "config_updated": False
             }
     
+    def update_config_from_html(self, html_file_path: str = None) -> Dict[str, Any]:
+        """
+        Обновляет конфигурацию на основе HTML-файла или скачивает HTML с зафиксированного URL.
+        Аналог скрипта run_update_config.py.
+        
+        Args:
+            html_file_path: Путь к HTML-файлу для обновления конфигурации.
+                           Если не указан, используется зафиксированный URL.
+            
+        Returns:
+            Словарь с информацией об обновлении конфигурации.
+        """
+        try:
+            html = None
+            product_url = "https://ozon.by/product/krossovki-lexsan-1585614406/?abt_att=1&at=XQtkZZ6GBFE1vAP4uLNx2rYTV3ppyWf56XqyrhBEwmOz&from_sku=1585614406&oos_search=false&origin_referer=ozon.by&tab=reviews"
+            
+            # Если указан путь к HTML-файлу, читаем его
+            if html_file_path:
+                if not os.path.exists(html_file_path):
+                    return {
+                        "success": False,
+                        "message": f"HTML-файл не найден: {html_file_path}",
+                        "config_updated": False
+                    }
+                with open(html_file_path, 'r', encoding='utf-8') as file:
+                    html = file.read()
+            else:
+                # Скачиваем HTML с зафиксированного URL
+                download_result = self.download_product_page(product_url)
+                if not download_result["success"]:
+                    return {
+                        "success": False,
+                        "message": f"Не удалось скачать страницу продукта: {download_result['message']}",
+                        "config_updated": False
+                    }
+                html = download_result["html"]
+                html_file_path = download_result["file_path"]
+            
+            # Путь к файлу шаблона HTML
+            template_html_file = os.path.join(self.htmldata_dir, "html_config", "config_html_file.html")
+            
+            # Путь к файлу конфигурации
+            config_file = os.path.join(self.config_dir, "config.json")
+            
+            # Создаем экземпляр класса HTMLConfigUpdater
+            updater = HTMLConfigUpdater(html, template_html_file, config_file)
+            
+            # Анализируем и обновляем конфигурацию
+            result = updater.update_config()
+            
+            return {
+                "success": True,
+                "message": "Конфигурация успешно обновлена",
+                "config_updated": result,
+                "html_file": html_file_path,
+                "product_url": product_url
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Ошибка при обновлении конфигурации: {str(e)}",
+                "config_updated": False,
+                "html_file": html_file_path,
+                "product_url": product_url
+            }
+    
     def download_category_page(self, category_name: str) -> Dict[str, Any]:
         """
         Загружает страницу категории и возвращает информацию о загрузке.
@@ -190,15 +275,15 @@ class OzonScraperFacade:
             links_file: Имя файла для сохранения ссылок.
             
         Returns:
-            Словарь с информацией об извлечении ссылок.
+            Результат извлечения ссылок.
         """
         try:
             # Парсим HTML для извлечения ссылок на продукты
             parser = HTMLMainPageLinksParser(html)
             product_links = parser.get_product_links()
             
-            # Сохраняем ссылки в файл
-            full_links_file = os.path.join(self.base_dir, links_file)
+            # Сохраняем ссылки в файл в директории data
+            full_links_file = os.path.join(self.data_dir, links_file)
             parser.save_links_to_txt(product_links, full_links_file)
             
             return {
@@ -252,7 +337,7 @@ class OzonScraperFacade:
     
     def process_product(self, product_url: str) -> Dict[str, Any]:
         """
-        Обрабатывает продукт: загружает страницу, извлекает данные и обновляет конфигурацию.
+        Обрабатывает продукт: загружает страницу и извлекает данные.
         
         Args:
             product_url: URL продукта на OZON.
@@ -270,18 +355,22 @@ class OzonScraperFacade:
                 "product_url": product_url
             }
         
+        # Проверяем, не получили ли мы страницу с ошибкой доступа
+        if "Доступ ограничен" in download_result.get("html", "") or "Access Denied" in download_result.get("html", ""):
+            return {
+                "success": False,
+                "message": "Доступ к странице ограничен. OZON обнаружил автоматизированный запрос.",
+                "product_url": product_url
+            }
+        
         # Извлекаем данные продукта
         parse_result = self.parse_product_data(download_result["html"], download_result["file_name"])
         
-        # Обновляем конфигурацию
-        config_result = self.update_config(download_result["html"])
-        
         return {
-            "success": parse_result["success"] and config_result["success"],
-            "message": f"Продукт обработан. Парсинг: {parse_result['message']}, Конфигурация: {config_result['message']}",
+            "success": parse_result["success"],
+            "message": f"Продукт обработан. Парсинг: {parse_result['message']}",
             "product_url": product_url,
-            "product_data": parse_result.get("product_data"),
-            "config_updated": config_result.get("config_updated", False)
+            "product_data": parse_result.get("product_data")
         }
     
     def batch_download_products(self, links_file: str = "product_links.txt", limit: Optional[int] = None) -> Dict[str, Any]:

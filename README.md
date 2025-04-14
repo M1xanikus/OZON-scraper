@@ -19,31 +19,25 @@
 ## Установка и запуск
 
 ### 1. Клонирование репозитория
-
 ```bash
 git clone https://github.com/yourusername/OZON-SCRAPER.git
 cd OZON-SCRAPER
 ```
 
 ### 2. Подготовка директорий и файлов
-
 ```bash
 mkdir -p htmldata/html_config json_data
 touch product_links.txt used_links.txt
 ```
 
 ### 3. Запуск Docker-контейнера
-
 ```bash
 docker-compose up --build -d
 ```
-
 Это запустит API-сервер на порту 8000.
 
 ### 4. Обновление конфигурации (опционально)
-
 Если вам нужно обновить конфигурацию для парсинга:
-
 ```bash
 chmod +x update_config.sh
 ./update_config.sh
@@ -52,33 +46,27 @@ chmod +x update_config.sh
 ## Использование API
 
 ### Поиск категории и получение ссылок
-
 ```bash
 curl -X POST "http://localhost:8000/process_category" \
      -H "Content-Type: application/json" \
      -d '{"category_name": "смартфоны"}'
 ```
-
 Это создаст файл `product_links.txt` с ссылками на товары в категории "смартфоны".
 
 ### Пакетное скачивание товаров
-
 ```bash
 curl -X POST "http://localhost:8000/batch_download" \
      -H "Content-Type: application/json" \
      -d '{"links_file": "product_links.txt", "limit": 10}'
 ```
-
 Это скачает до 10 товаров из файла `product_links.txt` и сохранит их данные в JSON-файлы в директории `json_data`.
 
 ### Скачивание отдельного товара
-
 ```bash
 curl -X POST "http://localhost:8000/process_product" \
      -H "Content-Type: application/json" \
      -d '{"product_url": "https://www.ozon.ru/product/123456789/"}'
 ```
-
 Это скачает страницу товара, извлечет данные и обновит конфигурацию.
 
 ## Документация API

@@ -21,15 +21,16 @@ if __name__ == "__main__":
 
     # Путь к файлу конфигурации
     config_file = os.path.join(project_root, "htmlParser", "configUpdater", "config.json")
-    
     # Создаём экземпляр класса HTMLConfigUpdater 
     updater = HTMLConfigUpdater(html, template_html_file, config_file)
 
     # Анализируем и обновляем конфигурацию
     updater.update_config()
-
+    
     """ 
     file_name = os.path.basename(file_path)
     parser = HTMLProductParser(html, file_name.rstrip('.html'))
     print(parser.get_product_data())
+    
+    
     """ 

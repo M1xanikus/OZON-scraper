@@ -2,6 +2,7 @@ import os
 import sys
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
 # Добавляем корневую директорию проекта в путь Python
@@ -17,20 +18,32 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Настройка CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Создаем экземпляр фасада
 scraper = OzonScraperFacade()
 
 # Модели для запросов
 class CategoryRequest(BaseModel):
     category_name: str
-    links_file: Optional[str] = "product_links.txt"
+    links_file: str = "product_links.txt"
 
 class ProductRequest(BaseModel):
-    product_url: HttpUrl
+    product_url: str
 
 class BatchDownloadRequest(BaseModel):
     links_file: str = "product_links.txt"
     limit: Optional[int] = None
+
+class ConfigUpdateRequest(BaseModel):
+    html_file_path: Optional[str] = None
 
 # Эндпоинты
 @app.get("/")
@@ -48,7 +61,8 @@ async def root():
             "/download_category",
             "/download_product",
             "/extract_links",
-            "/batch_download"
+            "/batch_download",
+            "/update_config_from_html"
         ]
     }
 
@@ -73,7 +87,7 @@ async def process_category(request: CategoryRequest):
 @app.post("/process_product")
 async def process_product(request: ProductRequest):
     """
-    Обрабатывает продукт: загружает страницу, извлекает данные и обновляет конфигурацию.
+    Обрабатывает продукт: загружает страницу и извлекает данные.
     
     Args:
         request: Запрос с URL продукта.
@@ -81,7 +95,7 @@ async def process_product(request: ProductRequest):
     Returns:
         Результат обработки продукта.
     """
-    result = scraper.process_product(str(request.product_url))
+    result = scraper.process_product(request.product_url)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -117,7 +131,7 @@ async def download_product(request: ProductRequest):
     Returns:
         Результат загрузки страницы продукта.
     """
-    result = scraper.download_product_page(str(request.product_url))
+    result = scraper.download_product_page(request.product_url)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
@@ -160,4 +174,21 @@ async def batch_download(request: BatchDownloadRequest):
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])
     
+    return result
+
+@app.post("/update_config_from_html")
+async def update_config_from_html(request: ConfigUpdateRequest):
+    """
+    Обновляет конфигурацию на основе HTML-файла или скачивает HTML с зафиксированного URL.
+    Аналог скрипта run_update_config.py.
+    
+    Args:
+        request: Запрос с путем к HTML-файлу (опционально).
+        
+    Returns:
+        Результат обновления конфигурации.
+    """
+    result = scraper.update_config_from_html(request.html_file_path)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
     return result 

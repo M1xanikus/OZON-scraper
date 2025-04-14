@@ -1,24 +1,35 @@
 import time
 import random
 import os
-import speedtest
+import sys
 import undetected_chromedriver as uc
-from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 from logs.logger import Logger
+
+# Add the project root to the Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(project_root)
+
 class PageDownloader:
     def __init__(self, url: str, download_path: str, log_file: str = "log.txt"):
         """
         Инициализация класса PageDownloader.
 
         :param url: URL страницы для загрузки.
+        :param download_path: Путь для сохранения HTML файлов.
+        :param log_file: Имя файла для логирования.
         """
         self.download_path = download_path
         self.url = url
         self.logger = Logger(log_file)
         self.driver = None
+        self.max_retries = 3
+        self.retry_delay = 5
 
     def __enter__(self):
         """
@@ -35,23 +46,104 @@ class PageDownloader:
 
     def setup_driver(self):
         """
-        Настройка undetected_chromedriver для обхода блокировок.
+        Настройка undetected-chromedriver для работы с Chrome.
         """
-        options = uc.ChromeOptions()
+        try:
+            options = uc.ChromeOptions()
+            
+            # Случайный User-Agent
+            user_agents = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            ]
+            options.add_argument(f"user-agent={random.choice(user_agents)}")
 
-        # Случайный User-Agent
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36",
-        ]
-        options.add_argument(f"user-agent={random.choice(user_agents)}")
+            # Настройки для работы в Docker
+            options.add_argument('--no-sandbox')
+            options.add_argument('--headless=new')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-setuid-sandbox')
+            options.add_argument('--no-first-run')
+            options.add_argument('--no-service-autorun')
+            options.add_argument('--no-default-browser-check')
+            options.add_argument('--password-store=basic')
+            options.add_argument('--no-zygote')
+            options.add_argument('--disable-notifications')
+            options.add_argument('--disable-popup-blocking')
+            options.add_argument('--disable-component-update')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-default-apps')
+            options.add_argument('--disable-background-networking')
+            options.add_argument('--disable-sync')
+            options.add_argument('--disable-translate')
+            options.add_argument('--metrics-recording-only')
+            options.add_argument('--disable-features=TranslateUI')
+            options.add_argument('--disable-features=Translate')
+            options.add_argument('--disable-features=NetworkService')
+            options.add_argument('--disable-features=NetworkServiceInProcess')
+            options.add_argument('--disable-features=IsolateOrigins')
+            options.add_argument('--disable-features=site-per-process')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--window-size=1920,1080')
+            
+            # Дополнительные настройки для обхода обнаружения
+            options.add_argument('--disable-infobars')
+            options.add_argument('--start-maximized')
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--allow-running-insecure-content')
+            options.add_argument('--disable-web-security')
+            options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+            options.add_argument('--disable-site-isolation-trials')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--disable-notifications')
+            options.add_argument('--disable-popup-blocking')
+            options.add_argument('--disable-save-password-bubble')
+            options.add_argument('--disable-single-click-autofill')
+            options.add_argument('--disable-autofill-keyboard-accessory-view')
+            options.add_argument('--disable-translate')
+            options.add_argument('--disable-zero-browsers-open-for-tests')
 
-        # Запуск браузера в фоновом режиме (headless)
-        options.headless = False  # Браузер не будет открываться визуально
+            # Инициализация драйвера с повторными попытками
+            for attempt in range(self.max_retries):
+                try:
+                    self.driver = uc.Chrome(
+                        options=options,
+                        version_main=None,  # Автоматическое определение версии
+                        use_subprocess=True,
+                        driver_executable_path=None  # Позволяем undetected-chromedriver самому найти драйвер
+                    )
+                    
+                    # Установка таймаутов
+                    self.driver.set_page_load_timeout(30)
+                    self.driver.implicitly_wait(10)
+                    
+                    # Установка дополнительных свойств для обхода обнаружения
+                    self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                        "userAgent": random.choice(user_agents)
+                    })
+                    self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                    
+                    # Проверка работоспособности драйвера
+                    self.driver.get("about:blank")
+                    return
+                    
+                except Exception as e:
+                    self.logger.log(f"Попытка {attempt + 1} инициализации драйвера не удалась: {str(e)}")
+                    if self.driver:
+                        try:
+                            self.driver.quit()
+                        except:
+                            pass
+                    if attempt < self.max_retries - 1:
+                        time.sleep(self.retry_delay)
+                    else:
+                        raise Exception(f"Не удалось инициализировать драйвер после {self.max_retries} попыток")
 
-        # Инициализация undetected_chromedriver
-        self.driver = uc.Chrome(options=options)
+        except Exception as e:
+            self.logger.log(f"Критическая ошибка при настройке драйвера: {str(e)}")
+            raise
 
     def _smooth_scroll(self):
         self.logger.log("Начало прокрутки страницы")
@@ -157,12 +249,8 @@ class PageDownloader:
             start_time = time.time()  # Засекаем время начала загрузки
             self.driver.get(self.url)
 
-
-
-
             # Эмуляция поведения
             self.emulate_human_behavior()
-
 
             # Сохранение
             product_name = self.extract_product_name_from_url()
