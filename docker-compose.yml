@@ -1,40 +1,36 @@
-version: '3.11'
-
 services:
-  web:
+  # browserless:
+  #   image: browserless/chrome:latest  # Используем последнюю стабильную версию
+  #   container_name: ozon_browserless
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - PREBOOT_CHROME=true
+  #     - DEFAULT_BLOCK_ADS=false
+  #     - CONNECTION_TIMEOUT=600000
+  #     - MAX_CONCURRENT_SESSIONS=1
+  #     - ENABLE_CORS=true
+  #     - DEFAULT_HEADLESS=true  # Используем boolean вместо строки
+  #     - DEFAULT_IGNORE_HTTPS_ERRORS=true
+  #     - DEFAULT_STEALTH=true
+  #     - DEFAULT_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36
+  #   shm_size: '2gb'
+  #   restart: unless-stopped
+
+  ozon-scraper-api:
     build: .
+    container_name: ozon_scraper_api
     ports:
-      - "8000:8000"
+      - "80:80"
     volumes:
-      - .:/app
       - ./data:/app/data
-    environment:
-      - PYTHONPATH=/app
-      - PYTHONUNBUFFERED=1
-      - IS_DOCKER_ENV=true
-      # Раскомментируйте и укажите ваш прокси, если используете:
-      # - HTTP_PROXY=http://user:password@host:port
-      # - HTTPS_PROXY=http://user:password@host:port
-    shm_size: '2gb'
-    cap_add:
-      - SYS_ADMIN
-    restart: unless-stopped
- 
-  scraper:
-    build: .
-    volumes:
-      - .:/app
-      - ./data:/app/data
-      - ./chrome-user-data:/home/scraper/.config/chrome
-    shm_size: '2gb'
-    ports:
-      - "9222:9222"
+      - ./logs:/app/logs
     environment:
       - IS_DOCKER_ENV=true
-      # Раскомментируйте и укажите ваш прокси, если используете:
-      # - HTTP_PROXY=http://user:password@host:port
-      # - HTTPS_PROXY=http://user:password@host:port
-    cap_add:
-      - SYS_ADMIN
+    # - BROWSERLESS_URL=http://browserless:3000/webdriver
+    # CHROME_BIN is now set in Dockerfile, no need to repeat unless overriding
+    # - CHROME_BIN=/usr/bin/google-chrome
+    # depends_on:
+      # - browserless
+    shm_size: '2gb'
     restart: unless-stopped
- 

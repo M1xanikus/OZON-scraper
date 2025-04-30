@@ -1,15 +1,16 @@
 import time
-import random
 import os
-import sys
+import random
 import undetected_chromedriver as uc
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 from selenium.webdriver.common.keys import Keys
 from fake_useragent import UserAgent, FakeUserAgentError
+
+import sys
 
 # Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,113 +32,109 @@ class CategoryPageDownloader:
         self.logger = Logger(log_file)
         self.driver = None
         self.base_url = "https://ozon.by"
+        self.user_agent = self._get_user_agent()
+
+    def _get_user_agent(self):
+        """Генерирует случайный User-Agent."""
+        try:
+            # Use a specific version if needed, otherwise random might cause issues
+            ua = UserAgent(browsers=['chrome'])
+            return ua.random
+        except FakeUserAgentError:
+             self.logger.log("Failed to get random UserAgent, using default.")
+             # Fallback user agent
+             return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        except Exception as e:
+            self.logger.log(f"Error getting UserAgent: {e}, using default.")
+            # Fallback user agent
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+
+    def _init_browserless(self):
+        # This method is no longer used, but we keep it for reference or future changes
+        # It might be useful if direct uc fails in some docker scenarios
+        pass
+
+    def _init_local_chrome(self):
+        """Инициализация локального Chrome с undetected_chromedriver (теперь используется и в Docker)."""
+        # import undetected_chromedriver as uc # Import moved to top
+
+        options = uc.ChromeOptions()
+        options.add_argument(f"user-agent={self.user_agent}")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+
+        # --- Опции для Docker ---
+        # Всегда добавляем эти опции, т.к. код теперь один для local и docker
+        options.add_argument('--no-sandbox')
+        options.add_argument('--headless=new') # Новый рекомендуемый headless режим
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-dev-shm-usage') # Важно для Docker
+        options.add_argument('--window-size=1920,1080') # Устанавливаем размер окна
+        # ------------------------
+
+        # Позволяем uc найти драйвер и браузер автоматически
+        # CHROME_BIN и CHROMEDRIVER_PATH из env могут быть использованы uc, если он их найдет
+        return uc.Chrome(
+            options=options,
+            driver_executable_path=os.getenv('CHROMEDRIVER_PATH'), # Можно оставить, uc попробует использовать
+            browser_executable_path=os.getenv('CHROME_BIN')       # Можно оставить, uc попробует использовать
+        )
+
+    def setup_driver(self):
+        """Настройка и инициализация WebDriver с повторными попытками (теперь всегда использует _init_local_chrome)."""
+        for attempt in range(1, 4):
+            try:
+                # Всегда используем undetected_chromedriver
+                self.logger.log(f"Attempt {attempt}/3: Initializing WebDriver using undetected_chromedriver...")
+                self.driver = self._init_local_chrome()
+
+                self.driver.set_page_load_timeout(60) # Увеличим таймаут загрузки страницы
+                self.logger.log("WebDriver успешно инициализирован с undetected_chromedriver")
+                return
+
+            except WebDriverException as e:
+                self.logger.log(f"Попытка {attempt}/3 не удалась: {str(e)}")
+                if self.driver: # Попытка закрыть драйвер, если он частично создался
+                    try:
+                        self.driver.quit()
+                    except: pass
+                if attempt == 3:
+                    self.logger.log("Не удалось инициализировать WebDriver после 3 попыток")
+                    raise RuntimeError("Не удалось инициализировать WebDriver после 3 попыток")
+                wait_time = 5 * attempt
+                self.logger.log(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                time.sleep(wait_time)  # Увеличиваем задержку с каждой попыткой
+            except Exception as e: # Ловим другие возможные ошибки инициализации uc
+                 self.logger.log(f"Попытка {attempt}/3 не удалась из-за общей ошибки: {str(e)}")
+                 if self.driver:
+                    try:
+                        self.driver.quit()
+                    except: pass
+                 if attempt == 3:
+                    self.logger.log("Не удалось инициализировать WebDriver после 3 попыток (общая ошибка)")
+                    raise RuntimeError(f"Не удалось инициализировать WebDriver после 3 попыток: {e}")
+                 wait_time = 5 * attempt
+                 self.logger.log(f"Ожидание {wait_time} секунд перед следующей попыткой...")
+                 time.sleep(wait_time)
+
+    def close_driver(self):
+        """Корректное закрытие WebDriver."""
+        if self.driver:
+            try:
+                self.driver.quit()
+                self.logger.log("WebDriver успешно закрыт")
+            except Exception as e:
+                self.logger.log(f"Ошибка при закрытии WebDriver: {str(e)}")
+            finally:
+                self.driver = None
 
     def __enter__(self):
-        """
-        Контекстный менеджер для автоматического запуска драйвера.
-        """
+        """Контекстный менеджер для автоматического запуска драйвера."""
         self.setup_driver()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Контекстный менеджер для автоматического закрытия драйвера.
-        """
+        """Контекстный менеджер для автоматического закрытия драйвера."""
         self.close_driver()
-
-    def setup_driver(self):
-        """
-        Настройка undetected_chromedriver для обхода блокировок.
-        """
-        options = uc.ChromeOptions()
-        
-        # === User-Agent ===
-        try:
-            ua = UserAgent()
-            user_agent = ua.random
-            self.logger.log(f"Using User-Agent: {user_agent}")
-        except FakeUserAgentError:
-            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-            self.logger.log(f"FakeUserAgentError: Using fallback User-Agent: {user_agent}")
-        options.add_argument(f"user-agent={user_agent}")
-
-        # === Опции для маскировки ===
-        options.add_argument("--disable-blink-features=AutomationControlled") 
-        options.add_argument("--disable-infobars")
-        options.add_argument("--start-maximized")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-popup-blocking")
-        options.add_argument("--profile-directory=Default")
-        options.add_argument("--ignore-certificate-errors")
-        options.add_argument("--disable-plugins-discovery")
-        
-        # === Прокси (из переменных окружения) ===
-        http_proxy = os.getenv('HTTP_PROXY')
-        https_proxy = os.getenv('HTTPS_PROXY')
-        proxy_used = False
-        if http_proxy:
-            options.add_argument(f'--proxy-server={http_proxy}')
-            self.logger.log(f"Using HTTP Proxy: {http_proxy}")
-            proxy_used = True
-        if https_proxy and not proxy_used:
-            options.add_argument(f'--proxy-server={https_proxy}')
-            self.logger.log(f"Using HTTPS Proxy: {https_proxy}")
-        
-        # === Специфичные для Docker опции ===
-        if os.getenv('IS_DOCKER_ENV') == 'true':
-            self.logger.log("Applying Docker-specific options...")
-            options.headless = True
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--window-size=1920,1080')
-            # Дополнительные опции для Docker
-            options.add_argument('--disable-software-rasterizer')
-            options.add_argument('--disable-setuid-sandbox')
-            options.add_argument('--single-process')
-            options.add_argument('--remote-debugging-port=9222')
-            # Установка путей для Chrome в Docker
-            options.binary_location = '/usr/bin/google-chrome'
-            options.add_argument('--crash-dumps-dir=/tmp')
-            options.add_argument('--user-data-dir=/home/scraper/.config/chrome')
-            # Добавляем опции для стабильности
-            options.add_argument('--disable-features=VizDisplayCompositor')
-            options.add_argument('--disable-features=IsolateOrigins,site-per-process')
-            options.add_argument('--disable-site-isolation-trials')
-            options.add_argument('--disable-web-security')
-            options.add_argument('--allow-running-insecure-content')
-            options.add_argument('--disable-features=NetworkService')
-            options.add_argument('--disable-features=NetworkServiceInProcess')
-        else:
-            self.logger.log("Running locally, applying non-headless options.")
-            options.headless = False
-
-        # Инициализация драйвера с повторными попытками
-        max_retries = 3
-        retry_count = 0
-        last_error = None
-
-        while retry_count < max_retries:
-            try:
-                self.driver = uc.Chrome(options=options)
-                self.logger.log("Chrome driver initialized successfully")
-                break
-            except Exception as e:
-                retry_count += 1
-                last_error = e
-                self.logger.log(f"Attempt {retry_count}/{max_retries} failed: {str(e)}")
-                if retry_count < max_retries:
-                    time.sleep(5)  # Пауза перед следующей попыткой
-                else:
-                    self.logger.log(f"CRITICAL: Failed to initialize Chrome driver after {max_retries} attempts: {last_error}")
-                    raise
-
-        # Maximize window локально (не в Docker/headless)
-        if not (os.getenv('IS_DOCKER_ENV') == 'true') and not options.headless:
-            try:
-                self.driver.maximize_window()
-            except Exception as e:
-                self.logger.log(f"Warning: Failed to maximize window: {e}")
 
     def _smooth_scroll(self):
         self.logger.log("Начало прокрутки страницы категории")
@@ -145,7 +142,7 @@ class CategoryPageDownloader:
 
         start_time = time.time()
         # Случайная продолжительность скролла
-        max_duration = random.uniform(28, 35) 
+        max_duration = random.uniform(28, 35)
         self.logger.log(f"Smooth scroll duration set to {max_duration:.2f} seconds")
         current_position = 0
         scroll_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -223,9 +220,9 @@ class CategoryPageDownloader:
             body = self.driver.find_element(By.TAG_NAME, 'body')
             actions.move_to_element(body).pause(0.1) # Переместились к body
             # Генерируем случайное смещение от левого верхнего угла body (приблизительно)
-            actions.move_by_offset(random_x // 2, random_y // 2).pause(random.uniform(0.3, 0.8)).perform() 
+            actions.move_by_offset(random_x // 2, random_y // 2).pause(random.uniform(0.3, 0.8)).perform()
             # Сбрасываем цепочку действий
-            # ActionChains(self.driver).reset_actions() 
+            # ActionChains(self.driver).reset_actions()
         except Exception as e:
             self.logger.log(f"Warning: Failed to perform random mouse move: {e}")
 
@@ -259,7 +256,7 @@ class CategoryPageDownloader:
         try:
             self.logger.log(f"Opening OZON: {self.base_url}")
             self.driver.get(self.base_url)
-            
+
             # Ждем загрузки (умеренная пауза)
             time.sleep(random.uniform(5, 8))
 
@@ -280,10 +277,12 @@ class CategoryPageDownloader:
 
             # Находим поле поиска
             self.logger.log(f"Searching for category input: {self.category_name}")
+            # Используем более универсальный XPath для поля поиска
+            search_input_xpath = "//input[@type='text' and (@placeholder='Искать на Ozon' or @name='text')]"
             search_box = WebDriverWait(self.driver, 20).until(
-                EC.element_to_be_clickable((By.NAME, "text"))
+                EC.element_to_be_clickable((By.XPATH, search_input_xpath))
             )
-            
+
             time.sleep(random.uniform(0.5, 1.5)) # Пауза перед вводом
 
             # Эмуляция ввода
@@ -291,18 +290,18 @@ class CategoryPageDownloader:
                 search_box.send_keys(char)
                 # Увеличен разброс пауз между символами
                 time.sleep(random.uniform(0.08, 0.35))
-            
+
             time.sleep(random.uniform(0.5, 1.0)) # Пауза перед Enter
-            
+
             search_box.send_keys(Keys.RETURN)
             self.logger.log(f"Performed search for category: {self.category_name}")
-            
-            # Ждем загрузки результатов
-            time.sleep(random.uniform(4, 6))
-            
+
+            # Ждем загрузки результатов (возможно, нужно дождаться определенного элемента)
+            time.sleep(random.uniform(4, 6)) # Пока оставляем простую задержку
+
             current_url = self.driver.current_url
             self.logger.log(f"Current URL after search: {current_url}")
-            
+
             if "search" in current_url or "category" in current_url:
                 self.logger.log(f"Successfully navigated to results page: {current_url}")
                 return True
@@ -310,7 +309,7 @@ class CategoryPageDownloader:
                 self.logger.log(f"Failed to navigate to results page. Current URL: {current_url}")
                 self._save_error_screenshot("navigation_failed_after_search") # Скриншот, если URL неверный
                 return False
-                
+
         except TimeoutException:
             self.logger.log("Timeout while waiting for search element")
             self._save_error_screenshot("timeout_search_element")
@@ -346,12 +345,13 @@ class CategoryPageDownloader:
 
     def save_html_to_file(self):
         if not self.driver:
-            raise RuntimeError("Драйвер не инициализирован")
+             self.logger.log("Драйвер не был инициализирован перед вызовом save_html_to_file")
+             raise RuntimeError("Драйвер не инициализирован")
 
         try:
             # Сначала выполняем поиск категории
             if not self.search_category():
-                self.logger.log("Не удалось выполнить поиск категории")
+                self.logger.log("Не удалось выполнить поиск категории, HTML не будет сохранен.")
                 return None
 
             self.logger.log(f"Начало загрузки страницы категории: {self.category_name}")
@@ -366,8 +366,14 @@ class CategoryPageDownloader:
             os.makedirs(self.download_path, exist_ok=True)
             file_path = os.path.join(self.download_path, f"{safe_category_name}.html")
 
+            page_source = self.driver.page_source # Получаем исходный код страницы
+            if not page_source:
+                self.logger.log("Не удалось получить исходный код страницы (page_source пуст).")
+                self._save_error_screenshot("empty_page_source")
+                return None
+
             with open(file_path, "w", encoding="utf-8") as f:
-                f.write(self.driver.page_source)
+                f.write(page_source)
             end_time = time.time() # Засекаем время окончания загрузки
 
             download_time = end_time - start_time
@@ -376,15 +382,9 @@ class CategoryPageDownloader:
             return file_path
 
         except Exception as e:
-            self.logger.log(f"Критическая ошибка при загрузке категории: {str(e)}")
+            self.logger.log(f"Критическая ошибка при загрузке категории '{self.category_name}': {str(e)}")
             # Добавим сохранение скриншота и здесь, на случай критической ошибки
             self._save_error_screenshot("critical_error_saving_html")
+            # Можно добавить выбрасывание исключения, если это критично для потока выполнения
+            # raise e
             return None
-
-    def close_driver(self):
-        """
-        Закрытие драйвера.
-        """
-        if self.driver:
-            self.logger.log("Закрытие драйвера")
-            self.driver.quit()
